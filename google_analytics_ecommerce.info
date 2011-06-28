@@ -1,0 +1,5 @@
+name = Google Analytics Ecommerce
+description = Adds eCommerce transation tracking to the Google Analytics module for any content type
+dependencies[] = googleanalytics
+core = 6.x
+php = 5.0
