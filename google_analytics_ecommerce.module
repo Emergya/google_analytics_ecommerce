@@ -44,8 +44,14 @@ function google_analytics_ecommerce_footer($main = 0) {
     if (is_object($node) && $node->nid) {
       // Build the google analytics ecomerce JS code
       $script = google_analytics_ecommerce_js($node);
-      // Add JS code to the footer.
-      drupal_add_js($script, 'inline', 'footer');
+      // Add our JS code into the 'googleanalytics_codesnippet_before' variable 
+      // used by googleanalytics module.
+      if (isset($GLOBALS['conf']['googleanalytics_codesnippet_before'])) {
+	$GLOBALS['conf']['googleanalytics_codesnippet_before'] = (string)$GLOBALS['conf']['googleanalytics_codesnippet_before'] . $script;
+      }
+      else {
+	$GLOBALS['conf']['googleanalytics_codesnippet_before'] = $script;
+      }
     }
     // Clean out SESSION variable.
     unset($_SESSION['gae_nid']);
@@ -132,14 +138,14 @@ function google_analytics_ecommerce_js($node) {
     'country'  => $node->country, 
   );
   $tr_args = array(
-    '"'. $transaction['order_id'] .'"',
-    '"'. $transaction['store'] .'"',
-    '"'. $transaction['total'] .'"',
-    '"'. $transaction['tax'] .'"',
-    '"'. $transaction['shipping'] .'"',
-    '"'. $transaction['city'] .'"',
-    '"'. $transaction['state'] .'"',
-    '"'. $transaction['country'] .'"',
+    "'". $transaction['order_id'] ."'",
+    "'". $transaction['store'] ."'",
+    "'". $transaction['total'] ."'",
+    "'". $transaction['tax'] ."'",
+    "'". $transaction['shipping'] ."'",
+    "'". $transaction['city'] ."'",
+    "'". $transaction['state'] ."'",
+    "'". $transaction['country'] ."'",
   );
   
   // Build item
@@ -152,22 +158,23 @@ function google_analytics_ecommerce_js($node) {
     'quantity' => $node->quantity,
   );
   $it_args = array(
-    '"'. $item['order_id'] .'"',
-    '"'. $item['sku'] .'"',
-    '"'. $item['name'] .'"',
-    '"'. $item['category'] .'"',
-    '"'. $item['price'] .'"',
-    '"'. $item['quantity'] .'"',
+    "'". $item['order_id'] ."'",
+    "'". $item['sku'] ."'",
+    "'". $item['name'] ."'",
+    "'". $item['category'] ."'",
+    "'". $item['price'] ."'",
+    "'". $item['quantity'] ."'",
   );
   
-  // Add transaction to JS
-  $script .= 'pageTracker._addTrans('. implode(', ', $tr_args) .');';
-  // Add item to JS
-  $script .= 'pageTracker._addItem('. implode(', ', $it_args) .');';
-  // Add submit function to JS
-  $script .= 'pageTracker._trackTrans();';
+  // By the moment, we just use async GA script
+  // Add transaction
+  $async_script .= "_gag.push(['_addTrans','" . implode(', ', $tr_args) ."]);";
+  // Add item
+  $async_script .= "_gag.push(['_addItem','" .implode(', ', $it_args) ."]);";
+  // Add tracking
+  $async_script .= "_gaq.push(['_trackTrans']);";
 
-  return $script;
+  return $async_script;
 }
 
 /**
