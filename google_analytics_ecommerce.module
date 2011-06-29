@@ -16,10 +16,11 @@
  * Implementation of hook_enable().
  */
 function google_analytics_ecommerce_enable() {
-  // Set the weight of the Google Analytics eCommerce module 
-  // greater than the weight of the main Google Analytics module
+  // Set the weight of the Google Analytics eCommerce module smaller than 
+  // the weight of the main Google Analytics module. This is necessary to 
+  // use its GLOBAL variable: 'google_analytics_prepend' for integration
   $weight = db_result(db_query("SELECT weight FROM {system} WHERE name = '%s'", 'googleanalytics'));
-  db_query("UPDATE {system} SET weight = %d WHERE name = '%s'", max(1000, $weight + 2), 'google_analytics_ecommerce');
+  db_query("UPDATE {system} SET weight = %d WHERE name = '%s'", $weight-2, 'google_analytics_ecommerce');
 }
 
 /**
@@ -38,23 +39,18 @@ function google_analytics_ecommerce_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL)
  * Implementation of hook_footer().
  */
 function google_analytics_ecommerce_footer($main = 0) {
-  // Check to see if SESSION variable gae_nid is pending
+  // Check to see if gae SESSION variable is set
   if (is_numeric($_SESSION['gae_nid'])) {
     $node = node_load($_SESSION['gae_nid']);
     if (is_object($node) && $node->nid) {
-      // Build the google analytics ecomerce JS code
-      $script = google_analytics_ecommerce_js($node);
-      // Add our JS code into the 'googleanalytics_codesnippet_before' variable 
-      // used by googleanalytics module.
-      if (isset($GLOBALS['conf']['googleanalytics_codesnippet_before'])) {
-	$GLOBALS['conf']['googleanalytics_codesnippet_before'] = (string)$GLOBALS['conf']['googleanalytics_codesnippet_before'] . $script;
-      }
-      else {
-	$GLOBALS['conf']['googleanalytics_codesnippet_before'] = $script;
-      }
+      // Build the google analytics ecommerce JS code
+      $gae_script = google_analytics_ecommerce_js($node);
+      // Add our JS code into the 'googleanalytics_codesnippet_before' 
+      // variable used by googleanalytics module.
+      $GLOBALS['conf']['googleanalytics_codesnippet_before'] .= $gae_script;
     }
-    // Clean out SESSION variable.
-    unset($_SESSION['gae_nid']);
+    // Clean out gae SESSION variable.
+    //    unset($_SESSION['gae_nid']);
   }
 }
 
@@ -67,24 +63,24 @@ function google_analytics_ecommerce_footer($main = 0) {
  *   JS code that will be added to the page footer.
  */
 function google_analytics_ecommerce_js($node) {
-
-  foreach (array('price','quantity','shipping','tax','city','state','country') as $val) {
+  // Let's fill in the dinamycs vars
+  foreach (array('price','quantity','shipping','tax','city','state','country') as $var) {
     // If we use CCK, we look for the value source: field or fixed in the settings form
     if (module_exists('content')) {
-      if (variable_get('gae_' . $val . '_' . $node->type, 'num') == 'num') {
+      if (variable_get('gae_' . $var . '_' . $node->type, 'num') == 'num') {
 	// Use fixed value
-	$node->$val = variable_get('gae_' . $val . '_num_value_' . $node->type, '');
+	$node->$var = variable_get('gae_' . $var . '_num_value_' . $node->type, '');
       }
       else {
 	// Get value from content field
-	$field_name = variable_get('gae_' . $val . '_field_name_' . $node->type, '');
+	$field_name = variable_get('gae_' . $var . '_field_name_' . $node->type, '');
 	$field_data = $node->$field_name;
-	$node->$val = check_plain($field_data[0]['value']);
+	$node->$var = drupal_to_js(check_plain($field_data[0]['value']));
       }
     }
     else {
       // CCK not available, so use fixed value
-      $node->$val = variable_get('gae_' . $val . '_num_value_' . $node->type, '');
+      $node->$var = variable_get('gae_' . $var . '_num_value_' . $node->type, '');
     }
   }
   if (module_exists('taxonomy') && variable_get('gae_category_vid_' .  $node->type, "num") == "num") {
@@ -94,17 +90,17 @@ function google_analytics_ecommerce_js($node) {
     if (count($terms)) {
       // We get just the first term
       $term = array_shift($terms);
-      $node->category = check_plain($term->name);
+      $node->category = drupal_to_js(check_plain($term->name));
     }
   }
   elseif (module_exists('content') && variable_get('gae_category_field_' .  $node->type, "num") == "field") {  
     // get configured field name
     $field_name = variable_get('gae_category_field_val_' .  $node->type, "");
     $field_data = $node->$field_name;
-    $node->category = check_plain($field_data[0]['value']);
+    $node->category = drupal_to_js(check_plain($field_data[0]['value']));
   }
   if (empty($node->category)) {
-    $product->category = t('No category');
+    $product->category = drupal_to_js(t('No category'));
   }
 
   // We build a value for transactions that we increment
@@ -138,14 +134,14 @@ function google_analytics_ecommerce_js($node) {
     'country'  => $node->country, 
   );
   $tr_args = array(
-    "'". $transaction['order_id'] ."'",
-    "'". $transaction['store'] ."'",
-    "'". $transaction['total'] ."'",
-    "'". $transaction['tax'] ."'",
-    "'". $transaction['shipping'] ."'",
-    "'". $transaction['city'] ."'",
-    "'". $transaction['state'] ."'",
-    "'". $transaction['country'] ."'",
+     "'". $transaction['order_id'] ."'",
+     "'". $transaction['store'] ."'",
+     "'". $transaction['total'] ."'",
+     "'". $transaction['tax'] ."'",
+     "'". $transaction['shipping'] ."'",
+     "'". $transaction['city'] ."'",
+     "'". $transaction['state'] ."'",
+     "'". $transaction['country'] ."'",
   );
   
   // Build item
@@ -158,19 +154,19 @@ function google_analytics_ecommerce_js($node) {
     'quantity' => $node->quantity,
   );
   $it_args = array(
-    "'". $item['order_id'] ."'",
-    "'". $item['sku'] ."'",
-    "'". $item['name'] ."'",
-    "'". $item['category'] ."'",
-    "'". $item['price'] ."'",
-    "'". $item['quantity'] ."'",
+     "'". $item['order_id'] ."'",
+     "'". $item['sku'] ."'",
+     "'". $item['name'] ."'",
+     "'". $item['category'] ."'",
+     "'". $item['price'] ."'",
+     "'". $item['quantity'] ."'",
   );
   
   // By the moment, we just use async GA script
   // Add transaction
-  $async_script .= "_gag.push(['_addTrans','" . implode(', ', $tr_args) ."]);";
+  $async_script .= "_gag.push(['_addTrans'," . implode(', ', $tr_args) ."]);";
   // Add item
-  $async_script .= "_gag.push(['_addItem','" .implode(', ', $it_args) ."]);";
+  $async_script .= "_gag.push(['_addItem'," .implode(', ', $it_args) ."]);";
   // Add tracking
   $async_script .= "_gaq.push(['_trackTrans']);";
 
