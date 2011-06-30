@@ -31,6 +31,7 @@ function google_analytics_ecommerce_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL)
     // We track node inserts, and optionally node updates (this can be configured in content type settings form)
     if ($op == 'insert' || ($op == 'update' && variable_get('gae_onupdate_' . $node->type, 0) == 1)) {
       $_SESSION['gae_nid'] = $node->nid;
+      $_SESSION['gae_nid_type'] = $node->type;
     }
   }
 }
@@ -41,16 +42,32 @@ function google_analytics_ecommerce_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL)
 function google_analytics_ecommerce_footer($main = 0) {
   // Check to see if gae SESSION variable is set
   if (is_numeric($_SESSION['gae_nid'])) {
+    // Check if we are tracking only in particular path
+    if (variable_get('gae_url_' . $_SESSION['gae_nid_type'], 0)) {
+      $tracked_path = variable_get('gae_url_value_' . $_SESSION['gae_nid_type'], 0);
+      // This code is similar to block module visibility control
+      $current_path = drupal_get_path_alias($_GET['q']);
+      // Compare with the internal and path alias (if any).
+      $page_match = drupal_match_path($current_path, $tracked_path);
+      if ($current_path != $_GET['q']) {
+	$page_match = $page_match || drupal_match_path($_GET['q'], $tracked_path);
+      }
+      // If we are not in the tracked path, just leave
+      if ($page_match == 0) {
+	return;
+      }
+    }
     $node = node_load($_SESSION['gae_nid']);
     if (is_object($node) && $node->nid) {
       // Build the google analytics ecommerce JS code
       $gae_script = google_analytics_ecommerce_js($node);
       // Add our JS code into the 'googleanalytics_codesnippet_before' 
       // variable used by googleanalytics module.
-      $GLOBALS['conf']['googleanalytics_codesnippet_before'] .= $gae_script;
+      $GLOBALS['conf']['googleanalytics_codesnippet_after'] .= $gae_script;
     }
     // Clean out gae SESSION variable.
-    //    unset($_SESSION['gae_nid']);
+    unset($_SESSION['gae_nid']);
+    unset($_SESSION['gae_nid_type']);
   }
 }
 
@@ -164,9 +181,9 @@ function google_analytics_ecommerce_js($node) {
   
   // By the moment, we just use async GA script
   // Add transaction
-  $async_script .= "_gag.push(['_addTrans'," . implode(', ', $tr_args) ."]);";
+  $async_script .= "_gaq.push(['_addTrans'," . implode(', ', $tr_args) ."]);";
   // Add item
-  $async_script .= "_gag.push(['_addItem'," .implode(', ', $it_args) ."]);";
+  $async_script .= "_gaq.push(['_addItem'," .implode(', ', $it_args) ."]);";
   // Add tracking
   $async_script .= "_gaq.push(['_trackTrans']);";
 
@@ -182,7 +199,7 @@ function google_analytics_ecommerce_form_alter(&$form, $form_state, $form_id) {
   if ($form_id == 'node_type_form') {    
     $form['gae'] = array(
       '#type'        => 'fieldset',
-      '#title'       => t('Google Analytics eCommerce'),
+      '#title'       => t('Google Analytics Ecommerce'),
       '#collapsible' => TRUE,
       '#collapsed'   => TRUE,
       '#weight'      => (function_exists('content_extra_field_weight') && isset($form['type'])) ? content_extra_field_weight($form['type']['#value'], 'google_analytics_ecommerce') : 30,
@@ -190,8 +207,8 @@ function google_analytics_ecommerce_form_alter(&$form, $form_state, $form_id) {
     // Enable tracking
     $form['gae']['gae_enabled'] = array(
       '#type'          => 'checkbox',
-      '#title'         => t('Enable Google Analytics eCommerce'),
-      '#description'   => t('When a node of this type of content is created, track Google Analytics eCommerce data for it'),
+      '#title'         => t('Enable Google Analytics Ecommerce'),
+      '#description'   => t('When a node of this type of content is created, track Google Analytics Ecommerce data for it'),
       '#default_value' => variable_get('gae_enabled_' . $form['#node_type']->type, 0),
     );
     // General settings
@@ -201,10 +218,22 @@ function google_analytics_ecommerce_form_alter(&$form, $form_state, $form_id) {
       '#collapsible' => TRUE,
       '#collapsed'   => TRUE,
     );
+    $form['gae']['gae_settings']['gae_url'] = array(
+      '#type'          => 'checkbox',
+      '#title'         => t('Associate transaction tracking with an url'),
+      '#description'   => t('Keep track of e-commerce transaction after node insert (and optionally update), but only when (and if) a particular system path is visited. This allows to carry out tracking only if visitor really ends the ckeckout proccess, after tpv for example'),
+      '#default_value' => variable_get('gae_url_' . $form['#node_type']->type, 0),
+    );
+    $form['gae']['gae_settings']['gae_url_value'] = array(
+      '#type'          => 'textfield',
+      '#default_value' => variable_get('gae_url_value_' . $form['#node_type']->type, ''),
+      '#size'          => 60,
+      '#description'   => t('Specify the path where you wish to track the transaction, starting with \'/\'. For example: /node/checkout/thanks. Other parameters than \'q\' will not be taken into account.'),
+    );
     $form['gae']['gae_settings']['gae_onupdate'] = array(
       '#type'          => 'checkbox',
       '#title'         => t('Track node updates'),
-      '#description'   => t('Track Google Analytics eCommerce also when node is updated'),
+      '#description'   => t('Track Google Analytics Ecommerce also when node is updated. This is usefull if you are working with node revisions for example'),
       '#default_value' => variable_get('gae_onupdate_' . $form['#node_type']->type, 0),
     );
     // CCK is not mandatory, so we render different form if we can use it
